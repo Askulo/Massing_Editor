@@ -1,0 +1,36 @@
+2026-03-25T10:53:28.535Z INFO Is remote: false
+2026-03-25T10:53:28.537Z INFO Starting Local. Installation path: undefined
+2026-03-25T10:53:28.538Z INFO [MainProvider] Creating new MainProvider instance...
+2026-03-25T10:53:28.539Z INFO [TabsManager] Code view listener set up at initialization
+2026-03-25T10:53:28.540Z INFO Installation path exists: e:\Downloads\Downloads\massing-editor\massing-editor\src
+2026-03-25T10:53:28.541Z INFO Initializing database with URL: file:C:\Users\Asus\AppData\Local\Temp\pythagora-temp\pythagora.db
+2026-03-25T10:53:28.544Z INFO Database file exists, skipping prisma generate/push for faster startup
+2026-03-25T10:53:28.545Z INFO Database initialized successfully
+2026-03-25T10:53:28.545Z INFO [Migration] Checking for database migration...
+2026-03-25T10:53:28.777Z INFO [Migration] No migration needed
+2026-03-25T10:53:31.353Z INFO Closing entire Pythagora extension...
+2026-03-25T10:53:31.358Z ERROR Error closing extension
+Error: Canceled
+Stack: Canceled: Canceled
+    at new bI (file:///c:/Users/Asus/AppData/Local/Programs/Microsoft%20VS%20Code/07ff9d6178/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:407:148227)
+    at r._remoteCall (file:///c:/Users/Asus/AppData/Local/Programs/Microsoft%20VS%20Code/07ff9d6178/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:407:154279)
+    at Proxy.i.<computed>.s.charCodeAt.i.<computed> (file:///c:/Users/Asus/AppData/Local/Programs/Microsoft%20VS%20Code/07ff9d6178/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:407:151074)
+    at dg._doExecuteCommand (file:///c:/Users/Asus/AppData/Local/Programs/Microsoft%20VS%20Code/07ff9d6178/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:494:48120)
+    at dg.executeCommand (file:///c:/Users/Asus/AppData/Local/Programs/Microsoft%20VS%20Code/07ff9d6178/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:494:47567)
+    at Object.executeCommand (file:///c:/Users/Asus/AppData/Local/Programs/Microsoft%20VS%20Code/07ff9d6178/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:618:135323)
+    at closeEntirePythagoraExtension (c:\Users\Asus\.vscode\extensions\pythagoratechnologies.pythagora-vs-code-2.6.19\out\extension.js:542:31)
+    at Object.deactivate (c:\Users\Asus\.vscode\extensions\pythagoratechnologies.pythagora-vs-code-2.6.19\out\extension.js:409:15)
+    at hk._deactivate (file:///c:/Users/Asus/AppData/Local/Programs/Microsoft%20VS%20Code/07ff9d6178/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:498:14479)
+    at file:///c:/Users/Asus/AppData/Local/Programs/Microsoft%20VS%20Code/07ff9d6178/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:498:12006
+    at Array.map (<anonymous>)
+    at hk._deactivateAll (file:///c:/Users/Asus/AppData/Local/Programs/Microsoft%20VS%20Code/07ff9d6178/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:498:11994)
+    at hk.terminate (file:///c:/Users/Asus/AppData/Local/Programs/Microsoft%20VS%20Code/07ff9d6178/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:498:12345)
+    at r.terminate (file:///c:/Users/Asus/AppData/Local/Programs/Microsoft%20VS%20Code/07ff9d6178/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:500:1072)
+    at Us (file:///c:/Users/Asus/AppData/Local/Programs/Microsoft%20VS%20Code/07ff9d6178/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:810:11700)
+    at MessagePortMain.<anonymous> (file:///c:/Users/Asus/AppData/Local/Programs/Microsoft%20VS%20Code/07ff9d6178/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:810:8122)
+    at MessagePortMain.emit (node:events:519:28)
+    at MessagePortMain.emit (node:domain:489:12)
+    at Object.MessagePortMain._internalPort.emit (node:electron/js2c/utility_init:2:2959)
+Extra context: {
+  "message": "Canceled"
+}

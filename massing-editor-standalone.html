@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SpaceSync — Massing Editor</title>
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="https://cdn.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
+
+
+</head>
+<body>
+
+<!-- Topbar -->
+<div id="topbar">
+  <div class="logo"><div class="ldot"></div>SPACESYNC — MASSING EDITOR</div>
+  <div class="sep"></div>
+  <div class="hint">
+    <span class="kbd">Click</span>place
+    <span class="kbd">Shift</span>multi-sel
+    <span class="kbd">Alt+Click</span>stack place
+    <span class="kbd">G</span>drag-move
+    <span class="kbd">Del</span>delete
+    <span class="kbd">Ctrl+Z/Y</span>undo/redo
+  </div>
+  <div class="tr">
+    <button class="tbtn" id="btnPlan">⊞ Plan</button>
+    <button class="tbtn" id="btnExport">↓ Export</button>
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <div id="cwrap">
+    <canvas id="rc"></canvas>
+    <div id="overlap-warn">⚠ Overlapping masses detected</div>
+    <canvas id="scc"></canvas>
+  </div>
+
+  <!-- Right Panel -->
+  <div id="panel">
+
+    <!-- Properties -->
+    <div class="ps">
+      <div class="plabel">Properties</div>
+      <div id="pempty" class="pempty">No mass selected</div>
+      <div id="pcontent" style="display:none">
+        <div class="pname"><div class="cdot" id="pcdot"></div><span id="pnlbl">Block A</span></div>
+        <div class="frow"><span class="flabel">W</span><button class="sbtn" data-field="iw" data-dir="-1">−</button><input type="number" id="iw" min="1" step="1"/><button class="sbtn" data-field="iw" data-dir="1">+</button><span class="funit">m</span></div>
+<div class="frow"><span class="flabel">D</span><button class="sbtn" data-field="id_" data-dir="-1">−</button><input type="number" id="id_" min="1" step="1"/><button class="sbtn" data-field="id_" data-dir="1">+</button><span class="funit">m</span></div>
+<div class="frow"><span class="flabel">H</span><button class="sbtn" data-field="ih" data-dir="-1">−</button><input type="number" id="ih" min="1" step="1"/><button class="sbtn" data-field="ih" data-dir="1">+</button><span class="funit">m</span></div>
+        <button class="delbtn" id="btnDel">✕ Delete Selected</button>
+      </div>
+    </div>
+
+    <!-- Sun -->
+    <div class="ps">
+      <div class="plabel">Sun Simulation</div>
+      <div class="slwrap">
+        <span style="font-size:13px">🌅</span>
+        <input type="range" id="sunsl" min="0" max="100" value="35"/>
+        <span style="font-size:13px">🌇</span>
+        <span class="tlabel" id="suntl">09:12</span>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="ps" style="flex:1">
+      <div class="plabel">History</div>
+      <div id="hlist"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Statusbar -->
+<div id="sb">
+  <div class="si"><span class="slb">FOOTPRINT</span><span class="sv" id="sfp">0 m²</span></div>
+  <div class="ssep">|</div>
+  <div class="si"><span class="slb">FLOOR AREA</span><span class="sv" id="sfa">0 m²</span></div>
+  <div class="ssep">|</div>
+  <div class="si"><span class="slb">FAR</span><span class="sv" id="farv">0.00</span></div>
+  <div class="ssep">|</div>
+  <div class="si"><span class="slb">MASSES</span><span class="sv" id="scnt">0</span></div>
+  <div class="si" style="margin-left:auto;color:var(--muted);font-size:10px">SITE 50×40m = 2000m²</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SpaceSync Massing Editor — Standalone (Babylon.js CDN)
+//  All 7 core requirements + 5 bonus features
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const BABYLON_NS = BABYLON; // CDN global
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const SITE_W = 50, SITE_D = 40, SITE_AREA = 2000;
+const FAR_LIMIT = 2.5, FLOOR_H = 3;
+const DRAG_PX = 5;
+const MAX_HISTORY = 20;
+
+const PALETTE = [
+  [0.35,0.55,0.75],[0.65,0.45,0.35],[0.35,0.6,0.5],
+  [0.7,0.55,0.3],[0.5,0.35,0.65],[0.55,0.65,0.35],
+  [0.65,0.35,0.45],[0.35,0.5,0.65],[0.45,0.6,0.6],
+  [0.6,0.5,0.35],
+];
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const buildings = new Map();      // id → BuildingData
+const selected  = new Set();      // ids
+let colorIdx    = 0;
+let nameIdx     = 0;
+let histStack   = [];
+let histPtr     = -1;
+
+// resize-before snapshot
+let resizeBefore = null;
+let resizePending= false;
+
+// drag-move
+let dragMode    = false;
+let dragId      = "";
+let dragOrigX   = 0, dragOrigZ = 0;
+
+// pointer
+let pDownX = 0, pDownY = 0;
+let isDragging = false;
+
+// section cut
+let sectionVisible = false;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function snap(v){ return Math.round(v); }
+
+function nextName(){
+  const L="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const i=nameIdx++;
+  return i<26?`Block ${L[i]}`:`Block ${L[Math.floor(i/26)-1]}${L[i%26]}`;
+}
+
+function nextColor(){
+  const [r,g,b]=PALETTE[colorIdx%PALETTE.length]; colorIdx++;
+  const h=(v)=>Math.round(v*255).toString(16).padStart(2,"0");
+  return { r, g, b, hex:`#${h(r)}${h(g)}${h(b)}` };
+}
+
+function uid(){ return `b_${Date.now()}_${Math.random().toString(36).slice(2,7)}`; }
+
+// ── Babylon Setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById("rc");
+const engine = new BABYLON.Engine(canvas, true, {preserveDrawingBuffer:true});
+const scene  = new BABYLON.Scene(engine);
+scene.clearColor = new BABYLON.Color4(0.055,0.059,0.067,1);
+
+// Camera
+const camera = new BABYLON.ArcRotateCamera("cam",-Math.PI/4,Math.PI/3.5,80,BABYLON.Vector3.Zero(),scene);
+camera.lowerRadiusLimit=5; camera.upperRadiusLimit=200;
+camera.lowerBetaLimit=0.1; camera.upperBetaLimit=Math.PI/2-0.05;
+camera.wheelPrecision=3; camera.panningSensibility=50;
+camera.attachControl(canvas,true);
+
+// Hemisphere light
+const hemi = new BABYLON.HemisphericLight("hemi",new BABYLON.Vector3(0,1,0),scene);
+hemi.intensity=0.35; hemi.diffuse=new BABYLON.Color3(0.6,0.7,0.9);
+
+// Directional light + shadows
+const dirLight = new BABYLON.DirectionalLight("dir",new BABYLON.Vector3(-0.5,-1,-0.5),scene);
+dirLight.position=new BABYLON.Vector3(30,60,30);
+dirLight.intensity=1.1; dirLight.diffuse=new BABYLON.Color3(1,0.95,0.85);
+
+const shadowGen = new BABYLON.ShadowGenerator(2048,dirLight);
+shadowGen.useBlurExponentialShadowMap=true; shadowGen.blurKernel=16;
+
+// Ground
+const ground = BABYLON.MeshBuilder.CreateGround("site",{width:200,height:200,subdivisions:1},scene);
+const gridMat = new BABYLON.GridMaterial("grid",scene);
+gridMat.majorUnitFrequency=10; gridMat.minorUnitVisibility=0.35;
+gridMat.gridRatio=1; gridMat.backFaceCulling=false;
+gridMat.mainColor=new BABYLON.Color3(0.12,0.13,0.16);
+gridMat.lineColor=new BABYLON.Color3(0.25,0.27,0.32);
+ground.material=gridMat; ground.receiveShadows=true;
+ground.metadata={type:"ground"};
+
+// Site boundary
+const siteBBox = BABYLON.MeshBuilder.CreateBox("site_bbox",{width:SITE_W,depth:SITE_D,height:0.05},scene);
+siteBBox.position.y=0.03; siteBBox.isPickable=false;
+const siteMat = new BABYLON.StandardMaterial("sitemat",scene);
+siteMat.diffuseColor=new BABYLON.Color3(0.25,0.8,0.45);
+siteMat.emissiveColor=new BABYLON.Color3(0.1,0.4,0.2);
+siteMat.wireframe=true; siteMat.alpha=0.7;
+siteBBox.material=siteMat;
+
+// Axes
+new BABYLON.AxesViewer(scene,3);
+
+// Highlight layer
+const hl = new BABYLON.HighlightLayer("hl",scene);
+hl.innerGlow=false; hl.blurHorizontalSize=0.5; hl.blurVerticalSize=0.5;
+
+// Bounding box mesh for multi-select
+let bbMesh = null;
+
+engine.runRenderLoop(()=>scene.render());
+window.addEventListener("resize",()=>engine.resize());
+
+// ── Building Core ─────────────────────────────────────────────────────────────
+function getStackingY(x,z,w,d,excludeId){
+  let maxY=0;
+  for(const [id,b] of buildings){
+    if(id===excludeId) continue;
+    const aMinX=b.posX-b.width/2, aMaxX=b.posX+b.width/2;
+    const aMinZ=b.posZ-b.depth/2, aMaxZ=b.posZ+b.depth/2;
+    const bMinX=x-w/2,            bMaxX=x+w/2;
+    const bMinZ=z-d/2,            bMaxZ=z+d/2;
+    if(aMinX<bMaxX&&aMaxX>bMinX&&aMinZ<bMaxZ&&aMaxZ>bMinZ){
+      const top=b.baseY+b.height;
+      if(top>maxY) maxY=top;
+    }
+  }
+  return maxY;
+}
+
+function buildMesh(id,w,d,h,x,z,baseY,cr,cg,cb){
+  const mesh=BABYLON.MeshBuilder.CreateBox(id,{width:w,depth:d,height:h},scene);
+  mesh.position=new BABYLON.Vector3(x, baseY+h/2, z);
+  mesh.receiveShadows=true;
+  const mat=new BABYLON.StandardMaterial("m_"+id,scene);
+  mat.diffuseColor=new BABYLON.Color3(cr,cg,cb);
+  mat.specularColor=new BABYLON.Color3(0.08,0.08,0.08);
+  mesh.material=mat;
+  mesh.metadata={type:"building",id};
+  return mesh;
+}
+
+function createBuilding(x,z,w=10,d=10,h=3,idOverride,nameOverride,colorOverride,baseYOverride){
+  const sx=snap(x), sz=snap(z);
+  const baseY = baseYOverride!==undefined ? baseYOverride : getStackingY(sx,sz,w,d);
+  const col = colorOverride ?? nextColor();
+  const id  = idOverride ?? uid();
+  const name= nameOverride ?? nextName();
+  const mesh= buildMesh(id,w,d,h,sx,sz,baseY,col.r,col.g,col.b);
+  const data={id,name,mesh,width:w,depth:d,height:h,posX:sx,posZ:sz,baseY,
+    colorR:col.r,colorG:col.g,colorB:col.b,colorHex:col.hex};
+  buildings.set(id,data);
+  shadowGen.addShadowCaster(mesh,true);
+  updateStats();
+  return data;
+}
+
+function removeBuildingById(id){
+  const b=buildings.get(id); if(!b) return b;
+  if(selected.has(id)){
+    try{ hl.removeMesh(b.mesh); }catch(e){}
+    selected.delete(id);
+  }
+  b.mesh.dispose();
+  buildings.delete(id);
+  updateStats();
+  return b;
+}
+
+function restoreBuilding(data){
+  const mesh=buildMesh(data.id,data.width,data.depth,data.height,
+    data.posX,data.posZ,data.baseY,data.colorR,data.colorG,data.colorB);
+  const restored={...data,mesh};
+  buildings.set(data.id,restored);
+  shadowGen.addShadowCaster(mesh,true);
+  updateStats();
+  return restored;
+}
+
+function applyResize(id,w,d,h){
+  const b=buildings.get(id); if(!b) return;
+  b.width=w; b.depth=d; b.height=h;
+  b.mesh.dispose();
+  const mesh=buildMesh(id,w,d,h,b.posX,b.posZ,b.baseY,b.colorR,b.colorG,b.colorB);
+  b.mesh=mesh;
+  shadowGen.addShadowCaster(mesh,true);
+  if(selected.has(id)){
+    try{ hl.removeMesh(mesh); }catch(e){}
+    hl.addMesh(mesh,new BABYLON.Color3(0.3,1,0.5));
+  }
+  updateBoundingBox();
+  updateStats();
+}
+
+function applyMove(id,x,z){
+  const b=buildings.get(id); if(!b) return;
+  b.posX=x; b.posZ=z;
+  b.baseY=getStackingY(x,z,b.width,b.depth,id);
+  b.mesh.position.x=x; b.mesh.position.z=z;
+  b.mesh.position.y=b.baseY+b.height/2;
+  updateBoundingBox();
+  updateStats();
+}
+
+// ── Selection ─────────────────────────────────────────────────────────────────
+function selectOne(id){
+  clearSelection();
+  const b=buildings.get(id); if(!b) return;
+  selected.add(id);
+  hl.addMesh(b.mesh,new BABYLON.Color3(0.3,1,0.5));
+  updateBoundingBox();
+  onSelectionChange();
+}
+
+function toggleSelect(id){
+  if(selected.has(id)){
+    const b=buildings.get(id);
+    if(b) try{ hl.removeMesh(b.mesh); }catch(e){}
+    selected.delete(id);
+  } else {
+    const b=buildings.get(id); if(!b) return;
+    selected.add(id);
+    hl.addMesh(b.mesh,new BABYLON.Color3(0.3,1,0.5));
+  }
+  updateBoundingBox();
+  onSelectionChange();
+}
+
+function clearSelection(){
+  for(const id of selected){
+    const b=buildings.get(id);
+    if(b) try{ hl.removeMesh(b.mesh); }catch(e){}
+  }
+  selected.clear();
+  destroyBoundingBox();
+  onSelectionChange();
+}
+
+function updateBoundingBox(){
+  destroyBoundingBox();
+  if(selected.size<2) return;
+  let min=new BABYLON.Vector3(Infinity,Infinity,Infinity);
+  let max=new BABYLON.Vector3(-Infinity,-Infinity,-Infinity);
+  for(const id of selected){
+    const b=buildings.get(id); if(!b) continue;
+    b.mesh.computeWorldMatrix(true);
+    const info=b.mesh.getBoundingInfo();
+    min=BABYLON.Vector3.Minimize(min,info.boundingBox.minimumWorld);
+    max=BABYLON.Vector3.Maximize(max,info.boundingBox.maximumWorld);
+  }
+  const center=BABYLON.Vector3.Center(min,max);
+  const size=max.subtract(min);
+  bbMesh=BABYLON.MeshBuilder.CreateBox("__bb__",{width:size.x+0.12,height:size.y+0.12,depth:size.z+0.12},scene);
+  bbMesh.position=center; bbMesh.isPickable=false;
+  const bmat=new BABYLON.StandardMaterial("__bbm__",scene);
+  bmat.emissiveColor=new BABYLON.Color3(1,0.85,0.15);
+  bmat.wireframe=true; bmat.alpha=0.8;
+  bbMesh.material=bmat;
+  bbMesh.metadata={type:"ui"};
+}
+
+function destroyBoundingBox(){
+  if(bbMesh){ bbMesh.dispose(); bbMesh=null; }
+}
+
+// ── Overlap Detection ─────────────────────────────────────────────────────────
+function checkOverlaps(){
+  const overlapping=new Set();
+  const arr=Array.from(buildings.values());
+  for(let i=0;i<arr.length;i++){
+    for(let j=i+1;j<arr.length;j++){
+      const a=arr[i],b=arr[j];
+      const aMinX=a.posX-a.width/2,  aMaxX=a.posX+a.width/2;
+      const aMinZ=a.posZ-a.depth/2,  aMaxZ=a.posZ+a.depth/2;
+      const bMinX=b.posX-b.width/2,  bMaxX=b.posX+b.width/2;
+      const bMinZ=b.posZ-b.depth/2,  bMaxZ=b.posZ+b.depth/2;
+      // Also check Y ranges overlap (not just stacking perfectly)
+      const aMinY=a.baseY, aMaxY=a.baseY+a.height;
+      const bMinY=b.baseY, bMaxY=b.baseY+b.height;
+      if(aMinX<bMaxX&&aMaxX>bMinX&&aMinZ<bMaxZ&&aMaxZ>bMinZ&&aMinY<bMaxY&&aMaxY>bMinY){
+        overlapping.add(a.id); overlapping.add(b.id);
+      }
+    }
+  }
+  // Highlight overlapping masses red (only if not selected)
+  for(const [id,b] of buildings){
+    const mat=b.mesh.material;
+    if(overlapping.has(id)){
+      mat.diffuseColor=new BABYLON.Color3(0.85,0.2,0.2);
+      mat.emissiveColor=new BABYLON.Color3(0.3,0.05,0.05);
+    } else {
+      mat.diffuseColor=new BABYLON.Color3(b.colorR,b.colorG,b.colorB);
+      mat.emissiveColor=new BABYLON.Color3(0,0,0);
+    }
+  }
+  const warn=document.getElementById("overlap-warn");
+  warn.classList.toggle("vis",overlapping.size>0);
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+function pushHistory(cmd){
+  histStack=histStack.slice(0,histPtr+1);
+  if(histStack.length>=MAX_HISTORY) histStack.shift();
+  histStack.push(cmd);
+  histPtr=histStack.length-1;
+  renderHistory();
+}
+
+function undoHistory(){
+  if(histPtr<0) return;
+  histStack[histPtr].undo();
+  histPtr--;
+  renderHistory();
+  onSelectionChange();
+}
+
+function redoHistory(){
+  if(histPtr>=histStack.length-1) return;
+  histPtr++;
+  histStack[histPtr].execute();
+  renderHistory();
+  onSelectionChange();
+}
+
+function renderHistory(){
+  const el=document.getElementById("hlist");
+  if(histStack.length===0){
+    el.innerHTML=`<div style="font-size:11px;color:var(--muted);font-style:italic">No actions yet</div>`;
+    return;
+  }
+  const icons={ADD:"＋",DELETE:"✕",RESIZE:"⟷",MOVE:"↕"};
+  el.innerHTML=histStack.slice().reverse().map((cmd,ri)=>{
+    const i=histStack.length-1-ri;
+    const cls=i===histPtr?"cur":i>histPtr?"fut":"";
+    return `<div class="hi ${cls}">${icons[cmd.type]||"○"} ${cmd.label}</div>`;
+  }).join("");
+}
+
+// ── Command Factories ─────────────────────────────────────────────────────────
+function cmdAdd(data){
+  return {
+    type:"ADD", label:`Add ${data.name}`,
+    execute(){ restoreBuilding(data); },
+    undo(){ removeBuildingById(data.id); }
+  };
+}
+
+function cmdDelete(snaps){
+  return {
+    type:"DELETE", label:snaps.length===1?`Delete ${snaps[0].name}`:`Delete ${snaps.length} masses`,
+    execute(){ for(const s of snaps) removeBuildingById(s.id); },
+    undo(){ for(const s of snaps) restoreBuilding(s); }
+  };
+}
+
+function cmdResize(id,ow,od,oh,nw,nd,nh){
+  return {
+    type:"RESIZE", label:"Resize",
+    execute(){ applyResize(id,nw,nd,nh); },
+    undo(){ applyResize(id,ow,od,oh); }
+  };
+}
+
+function cmdMove(id,ox,oz,nx,nz){
+  return {
+    type:"MOVE", label:"Move",
+    execute(){ applyMove(id,nx,nz); },
+    undo(){ applyMove(id,ox,oz); }
+  };
+}
+
+// ── Pointer Interaction ───────────────────────────────────────────────────────
+scene.onPointerObservable.add((info)=>{
+  const e=info.event;
+  if(info.type===BABYLON.PointerEventTypes.POINTERDOWN){
+    pDownX=e.clientX; pDownY=e.clientY; isDragging=false;
+    // Start drag-move if clicking a selected building
+    if(!e.altKey){
+      const pick=scene.pick(e.offsetX,e.offsetY);
+      if(pick?.hit&&pick.pickedMesh?.metadata?.type==="building"){
+        const id=pick.pickedMesh.metadata.id;
+        if(selected.has(id)&&!e.shiftKey){
+          const b=buildings.get(id);
+          if(b){ dragMode=true;dragId=id;dragOrigX=b.posX;dragOrigZ=b.posZ; }
+        }
+      }
+    }
+  }
+
+  if(info.type===BABYLON.PointerEventTypes.POINTERMOVE){
+    const dx=e.clientX-pDownX,dy=e.clientY-pDownY;
+    if(Math.sqrt(dx*dx+dy*dy)>DRAG_PX) isDragging=true;
+    // Live drag
+    if(dragMode&&isDragging&&dragId){
+      const pick=scene.pick(e.offsetX,e.offsetY,m=>m.metadata?.type==="ground");
+      if(pick?.hit&&pick.pickedPoint){
+        const sx=snap(pick.pickedPoint.x),sz=snap(pick.pickedPoint.z);
+        const b=buildings.get(dragId); if(!b) return;
+        b.posX=sx; b.posZ=sz;
+        b.baseY=getStackingY(sx,sz,b.width,b.depth,dragId);
+        b.mesh.position.x=sx; b.mesh.position.z=sz;
+        b.mesh.position.y=b.baseY+b.height/2;
+        updateBoundingBox(); updateStats();
+      }
+    }
+  }
+
+  if(info.type===BABYLON.PointerEventTypes.POINTERUP){
+    const dx=e.clientX-pDownX,dy=e.clientY-pDownY;
+    const wasDrag=Math.sqrt(dx*dx+dy*dy)>DRAG_PX;
+    if(dragMode){
+      const b=buildings.get(dragId);
+      if(b&&wasDrag&&(b.posX!==dragOrigX||b.posZ!==dragOrigZ)){
+        pushHistory(cmdMove(dragId,dragOrigX,dragOrigZ,b.posX,b.posZ));
+      }
+      dragMode=false; dragId="";
+      return;
+    }
+    if(wasDrag) return;
+    handleClick(e);
+  }
+});
+
+function handleClick(e){
+  const pick=scene.pick(e.offsetX,e.offsetY);
+  if(!pick?.hit){ clearSelection(); return; }
+  const mesh=pick.pickedMesh;
+  if(!mesh) return;
+
+  // Alt-click: force place
+  if(e.altKey){
+    const pt=pick.pickedPoint;
+    placeBuilding(pt.x,pt.z);
+    return;
+  }
+
+  if(mesh.metadata?.type==="building"){
+    const id=mesh.metadata.id;
+    e.shiftKey ? toggleSelect(id) : selectOne(id);
+    return;
+  }
+
+  if(mesh.metadata?.type==="ground"){
+    if(e.shiftKey){ clearSelection(); return; }
+    const pt=pick.pickedPoint;
+    placeBuilding(pt.x,pt.z);
+    return;
+  }
+
+  clearSelection();
+}
+
+function placeBuilding(wx,wz){
+  const data=createBuilding(wx,wz);
+  const snap_data={...data,mesh:undefined}; // store without mesh ref for undo
+  // store serializable snapshot
+  const snap2={id:data.id,name:data.name,width:data.width,depth:data.depth,
+    height:data.height,posX:data.posX,posZ:data.posZ,baseY:data.baseY,
+    colorR:data.colorR,colorG:data.colorG,colorB:data.colorB,colorHex:data.colorHex};
+  pushHistory(cmdAdd(snap2));
+}
+
+// ── Selection Change ──────────────────────────────────────────────────────────
+function onSelectionChange(){
+  updatePropertiesPanel();
+  checkOverlaps();
+}
+
+// ── Properties Panel ──────────────────────────────────────────────────────────
+function updatePropertiesPanel(){
+  const ids=Array.from(selected);
+  const pempty=document.getElementById("pempty");
+  const pcontent=document.getElementById("pcontent");
+  if(ids.length!==1){
+    pempty.style.display="block"; pcontent.style.display="none";
+    pempty.textContent=ids.length===0?"No mass selected":`${ids.length} masses selected`;
+    return;
+  }
+  const b=buildings.get(ids[0]); if(!b) return;
+  pempty.style.display="none"; pcontent.style.display="block";
+  document.getElementById("pnlbl").textContent=b.name;
+  document.getElementById("pcdot").style.background=b.colorHex;
+  document.getElementById("iw").value=b.width;
+  document.getElementById("id_").value=b.depth;
+  document.getElementById("ih").value=b.height;
+}
+
+// Resize inputs
+["iw","id_","ih"].forEach(sid=>{
+  const el=document.getElementById(sid);
+  el.addEventListener("focus",()=>{
+    const ids=Array.from(selected);
+    if(ids.length!==1) return;
+    const b=buildings.get(ids[0]); if(!b) return;
+    resizeBefore={w:b.width,d:b.depth,h:b.height};
+    resizePending=false;
+  });
+  el.addEventListener("input",()=>{
+    const ids=Array.from(selected);
+    if(ids.length!==1) return;
+    const b=buildings.get(ids[0]); if(!b) return;
+    const w=Math.max(1,parseFloat(document.getElementById("iw").value)||1);
+    const d=Math.max(1,parseFloat(document.getElementById("id_").value)||1);
+    const h=Math.max(1,parseFloat(document.getElementById("ih").value)||1);
+    applyResize(b.id,w,d,h);
+    resizePending=true;
+  });
+  el.addEventListener("blur",()=>{
+    if(!resizePending||!resizeBefore) return;
+    resizePending=false;
+    const ids=Array.from(selected);
+    if(ids.length!==1) return;
+    const b=buildings.get(ids[0]); if(!b) return;
+    pushHistory(cmdResize(b.id,resizeBefore.w,resizeBefore.d,resizeBefore.h,b.width,b.depth,b.height));
+    resizeBefore=null;
+  });
+});
+
+// Delete button
+document.getElementById("btnDel").addEventListener("click",deleteSelected);
+
+function deleteSelected(){
+  if(selected.size===0) return;
+  const snaps=[];
+  for(const id of selected){
+    const b=buildings.get(id); if(!b) continue;
+    snaps.push({id:b.id,name:b.name,width:b.width,depth:b.depth,height:b.height,
+      posX:b.posX,posZ:b.posZ,baseY:b.baseY,
+      colorR:b.colorR,colorG:b.colorG,colorB:b.colorB,colorHex:b.colorHex});
+  }
+  clearSelection();
+  for(const s of snaps) removeBuildingById(s.id);
+  pushHistory(cmdDelete(snaps));
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────────────
+document.addEventListener("keydown",(e)=>{
+  if(document.activeElement.tagName==="INPUT") return;
+  if(e.key==="Delete"||e.key==="Backspace"){ e.preventDefault(); deleteSelected(); }
+  if(e.ctrlKey&&e.key==="z"){ e.preventDefault(); undoHistory(); }
+  if(e.ctrlKey&&e.key==="y"){ e.preventDefault(); redoHistory(); }
+});
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function updateStats(){
+  const arr=Array.from(buildings.values());
+  let footprint=0,floorArea=0;
+  for(const b of arr){
+    const fp=b.width*b.depth; footprint+=fp;
+    floorArea+=fp*Math.max(1,Math.ceil(b.height/FLOOR_H));
+  }
+  const far=arr.length===0?0:floorArea/SITE_AREA;
+  document.getElementById("sfp").textContent=`${footprint.toFixed(0)} m²`;
+  document.getElementById("sfa").textContent=`${floorArea.toFixed(0)} m²`;
+  document.getElementById("farv").textContent=far.toFixed(2);
+  document.getElementById("scnt").textContent=arr.length;
+  const over=far>FAR_LIMIT;
+  document.getElementById("farv").classList.toggle("over",over);
+  document.getElementById("sb").classList.toggle("over",over);
+  // Site boundary
+  const sm=siteBBox.material;
+  if(over){ sm.diffuseColor=new BABYLON.Color3(0.9,0.2,0.2); sm.emissiveColor=new BABYLON.Color3(0.5,0.1,0.1); }
+  else    { sm.diffuseColor=new BABYLON.Color3(0.25,0.8,0.45); sm.emissiveColor=new BABYLON.Color3(0.1,0.4,0.2); }
+  checkOverlaps();
+  if(sectionVisible) drawSectionCut();
+}
+
+// ── Sun Slider ────────────────────────────────────────────────────────────────
+document.getElementById("sunsl").addEventListener("input",function(){
+  const t=parseInt(this.value)/100;
+  const angle=Math.PI*t;
+  const elev=Math.sin(Math.PI*t)*0.85+0.15;
+  dirLight.direction=new BABYLON.Vector3(-Math.cos(angle),-elev,-Math.sin(angle)*0.5).normalize();
+  dirLight.position=new BABYLON.Vector3(Math.cos(angle)*60,50,Math.sin(angle)*0.5*60);
+  const total=6*60+t*12*60;
+  const h=Math.floor(total/60),m=String(Math.floor(total%60)).padStart(2,"0");
+  document.getElementById("suntl").textContent=`${h}:${m}`;
+});
+// Set initial sun position
+document.getElementById("sunsl").dispatchEvent(new Event("input"));
+
+// ── Section Cut ───────────────────────────────────────────────────────────────
+document.getElementById("btnPlan").addEventListener("click",()=>{
+  sectionVisible=!sectionVisible;
+  document.getElementById("btnPlan").classList.toggle("on",sectionVisible);
+  const cc=document.getElementById("scc");
+  cc.classList.toggle("vis",sectionVisible);
+  if(sectionVisible) drawSectionCut();
+});
+
+function drawSectionCut(){
+  const canvas=document.getElementById("scc");
+  const parent=canvas.parentElement;
+  canvas.width=parent.clientWidth; canvas.height=parent.clientHeight;
+  const ctx=canvas.getContext("2d");
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="rgba(14,15,17,0.9)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  const cx=canvas.width/2,cy=canvas.height/2;
+  const scale=Math.min(canvas.width,canvas.height)/80;
+  // Grid
+  ctx.strokeStyle="rgba(255,255,255,0.04)"; ctx.lineWidth=0.5;
+  for(let g=-40;g<=40;g+=5){
+    ctx.beginPath();ctx.moveTo(cx+g*scale,0);ctx.lineTo(cx+g*scale,canvas.height);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,cy+g*scale);ctx.lineTo(canvas.width,cy+g*scale);ctx.stroke();
+  }
+  // Site
+  ctx.strokeStyle="rgba(74,222,128,0.7)"; ctx.lineWidth=1.5;
+  ctx.strokeRect(cx-SITE_W/2*scale,cy-SITE_D/2*scale,SITE_W*scale,SITE_D*scale);
+  ctx.fillStyle="rgba(74,222,128,0.08)";
+  ctx.fillRect(cx-SITE_W/2*scale,cy-SITE_D/2*scale,SITE_W*scale,SITE_D*scale);
+  // Buildings
+  for(const b of buildings.values()){
+    const bx=cx+b.posX*scale-b.width/2*scale;
+    const bz=cy+b.posZ*scale-b.depth/2*scale;
+    const bw=b.width*scale,bd=b.depth*scale;
+    ctx.fillStyle=b.colorHex+"cc"; ctx.fillRect(bx,bz,bw,bd);
+    ctx.strokeStyle=b.colorHex; ctx.lineWidth=1.5; ctx.strokeRect(bx,bz,bw,bd);
+    // Labels
+    ctx.fillStyle="rgba(255,255,255,0.9)";
+    ctx.font=`bold ${Math.max(9,scale*1.3)}px JetBrains Mono,monospace`;
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(`${b.width}×${b.depth}`,bx+bw/2,bz+bd/2+4);
+    ctx.fillStyle="rgba(255,255,255,0.5)";
+    ctx.font=`${Math.max(8,scale*1)}px JetBrains Mono,monospace`;
+    ctx.fillText(b.name,bx+bw/2,bz+bd/2-7);
+  }
+  ctx.fillStyle="rgba(74,222,128,0.9)";
+  ctx.font="bold 11px JetBrains Mono,monospace";
+  ctx.textAlign="left"; ctx.textBaseline="top";
+  ctx.fillText("PLAN VIEW — NORTH UP",16,16);
+  ctx.fillStyle="rgba(255,255,255,0.3)";
+  ctx.font="10px JetBrains Mono,monospace";
+  ctx.fillText("CLICK ⊞ PLAN TO EXIT",16,32);
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+document.getElementById("btnExport").addEventListener("click",()=>{
+  const data=Array.from(buildings.values()).map(b=>({
+    id:b.id, name:b.name,
+    position:{x:b.posX,y:b.baseY,z:b.posZ},
+    dimensions:{w:b.width,d:b.depth,h:b.height},
+    floors:Math.max(1,Math.ceil(b.height/FLOOR_H)),
+    footprintArea:b.width*b.depth,
+    floorArea:b.width*b.depth*Math.max(1,Math.ceil(b.height/FLOOR_H)),
+  }));
+  const json=JSON.stringify({buildings:data,siteArea:SITE_AREA,siteW:SITE_W,siteD:SITE_D},null,2);
+  const url=URL.createObjectURL(new Blob([json],{type:"application/json"}));
+  const a=document.createElement("a"); a.href=url; a.download="massing-export.json"; a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ── Initial render ────────────────────────────────────────────────────────────
+updateStats();
+renderHistory();
+console.log("[SpaceSync] Massing Editor ready — Babylon.js CDN standalone");
+</script>
+</body>
+</html>

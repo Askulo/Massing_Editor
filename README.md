@@ -1,0 +1,76 @@
+# SpaceSync — Massing Editor
+
+A browser-based 3D building massing editor built with **Babylon.js**, **TypeScript**, and **Vite**.
+
+---
+
+## Quick Start (Standalone — Zero Build)
+
+Open `massing-editor-standalone.html` directly in any modern browser.  
+No server, no install, no build step — it loads Babylon.js from CDN.
+
+---
+
+## Vite + TypeScript Setup
+
+```bash
+npm install
+npm run dev       # dev server → http://localhost:5173
+npm run build     # production build → dist/
+npm run preview   # preview build
+```
+
+---
+
+## Library Choice
+
+**Babylon.js** — chosen because it is the library SpaceDesign runs on, and it provides:
+- `ArcRotateCamera` with panning and orbit built-in
+- `ShadowGenerator` with blur shadow maps
+- `HighlightLayer` for GPU-accelerated selection glow
+- `GridMaterial` via materials library
+- First-class TypeScript types
+
+---
+
+## How I Handled Pivot-Correct Height Resize
+
+When a building's height changes, simply scaling the mesh would move its centre (and therefore its bottom face). Instead, this editor **rebuilds the geometry** via `MeshBuilder.CreateBox` with the new dimensions on every resize, and positions the mesh at `y = baseY + newHeight / 2`. The `baseY` value records the Y coordinate of the bottom face at placement time (accounting for stacking), so it never changes during a resize — only `mesh.position.y` shifts by half the height delta. This guarantees the bottom face stays perfectly flush with the ground (or the top of any mass it was stacked onto), with no floating-point drift over repeated edits.
+
+---
+
+## All 7 Core Requirements
+
+| # | Requirement | Implementation |
+|---|---|---|
+| 01 | 3D Scene | `ArcRotateCamera`, `DirectionalLight`, `HemisphericLight`, `GridMaterial` (1m), `AxesViewer` |
+| 02 | Click-to-Place | Raycasting → ground, snap to 1m grid, stacking via AABB `getStackingY()` |
+| 03 | Selection | `HighlightLayer` green glow, Shift+click multi, 5px drag threshold, yellow bounding box |
+| 04 | Properties Panel | Live W/D/H inputs, pivot-correct geometry rebuild, no `mesh.scaling` |
+| 05 | Shadow Casting | `ShadowGenerator` blur exponential, all masses cast + receive, live on resize/move |
+| 06 | Delete + Undo/Redo | Command pattern (Add/Delete/Resize/Move), 20-step history, stacking Y restored on undo |
+| 07 | FAR Calculator | Live status bar, `FAR = floorArea / 2000`, site boundary turns red > 2.5, 0.00 on empty scene |
+
+---
+
+## Bonus Challenges Implemented
+
+| Bonus | Approach |
+|---|---|
+| **Drag to Move (+10)** | `POINTERDOWN` on selected mesh starts drag-move; `POINTERMOVE` snaps live to 1m grid; recorded as `MoveCommand` on `POINTERUP`. Does not conflict with orbit (orbit only fires when clicking non-selected or empty ground). |
+| **Overlap Warning (+10)** | AABB check in XZ *and* Y on every `updateStats()` call. Overlapping masses turn red with emissive tint; warning badge shown at top of viewport. Clears when separated. |
+| **Section Cut View (+10)** | Top-down orthographic `<canvas>` overlay drawn with the Canvas 2D API. Shows filled colour rectangles, dimension labels (`W×D`), mass names, site boundary, and a 5m grid. Toggle with **⊞ Plan** button. |
+| **Sun Shadow Simulation (+10)** | Slider maps 0–100 to 6 am–6 pm. Light direction computed as `(-cos θ, -sin(πt)·0.85, -sin θ·0.5)`, elevation follows a sine arc. Shadow angle and length update live. |
+| **IFC-style JSON Export (+5)** | **↓ Export** button generates `{ buildings[], siteArea, siteW, siteD }` with `id, name, position{x,y,z}, dimensions{w,d,h}, floors, footprintArea, floorArea` per mass. Downloaded as `massing-export.json`. |
+
+---
+
+## One Thing I'd Improve
+
+The stacking logic (`getStackingY`) does a brute-force O(n²) AABB scan on every placement and move. With many masses this degrades. I'd replace it with a spatial hash grid (bucket XZ cells into 1m tiles) so stacking height queries become O(1) lookups — the same structure would also accelerate overlap detection.
+
+---
+
+## AI Tools
+
+Claude (Anthropic) was used for initial scaffolding, structural suggestions, and debugging. All 3D math, command-pattern design, and pivot-correct resize logic were verified and refined by hand.
