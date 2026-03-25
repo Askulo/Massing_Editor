@@ -77,6 +77,36 @@ When a building's height changes, simply scaling the mesh would move its centre 
 
 ---
 
+
+---
+
+## Project Structure
+
+```
+├── index.html                        # Vite entry point
+├── massing-editor-standalone.html   # Zero-install CDN single-file build
+├── vite.config.ts
+├── tsconfig.json
+├── package.json
+└── src/
+    ├── main.ts                  # App entry — wires all managers
+    ├── types.ts                 # BuildingData, Command interfaces
+    ├── index.css                # Dark-theme UI styles
+    ├── commands/
+    │   └── BuildingCommands.ts  # Add / Delete / Resize / Move commands
+    ├── managers/
+    │   ├── SceneManager.ts      # Engine, camera, lighting, shadows, ground
+    │   ├── BuildingManager.ts   # CRUD for masses, stacking, billboard labels
+    │   ├── SelectionManager.ts  # Edge highlight, multi-select, group bbox
+    │   ├── HistoryManager.ts    # Undo/redo stack (command pattern)
+    │   ├── InteractionManager.ts# Pointer events, drag-to-move
+    │   └── OverlapManager.ts    # AABB overlap detection + visual warning
+    └── ui/
+        └── UIManager.ts         # Panel, FAR stats, plan view, export, sun slider
+```
+
+---
+
 ## One Thing I'd Improve
 
 The stacking logic (`getStackingY`) does a brute-force O(n²) AABB scan on every placement and move. With many masses this degrades. I'd replace it with a spatial hash grid (bucket XZ cells into 1m tiles) so stacking height queries become O(1) lookups — the same structure would also accelerate overlap detection.
@@ -86,3 +116,20 @@ The stacking logic (`getStackingY`) does a brute-force O(n²) AABB scan on every
 ## AI Tools
 
 Claude (Anthropic) was used for initial scaffolding, structural suggestions. Gemini and chatgpt for debugging and optimisation. All 3D math, command-pattern design, and pivot-correct resize logic were verified and refined by hand.
+
+
+## Controls Reference
+
+| Input | Action |
+|---|---|
+| Click on ground | Place new building mass |
+| Click on mass | Select mass |
+| Shift + Click | Multi-select / toggle |
+| Drag selected mass | Move with 1 m grid snap |
+| Del / Delete button | Remove selected mass(es) |
+| Ctrl + Z | Undo |
+| Ctrl + Y | Redo |
+| Alt + Click | Force-place on any surface |
+| ⊞ Plan button | Toggle top-down plan view |
+| ↑ Export button | Download IFC-style JSON |
+| Sun slider | Simulate time-of-day shadows |
