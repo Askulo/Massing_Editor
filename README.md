@@ -31,15 +31,6 @@ No server, no install, no build step — it loads Babylon.js from CDN.
 
 ---
 
-## Vite + TypeScript Setup
-
-```bash
-npm install
-npm run dev       # dev server → http://localhost:5173
-npm run build     # production build → dist/
-npm run preview   # preview build
-```
-
 ---
 
 ## Library Choice
